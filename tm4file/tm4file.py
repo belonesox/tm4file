@@ -46,6 +46,22 @@ def copyfile(src, dst):
         try: os.close(fout)
         except: pass
 
+import subprocess
+import shlex
+
+def recode_video(src, dst):
+    scmd = f'''ffmpeg -i '{src}' -pix_fmt yuv420p  -vcodec h264_nvenc -qp 0 -acodec copy -f avi '{dst}' '''
+    try:
+        print(scmd)
+        subprocess.run(shlex.split(scmd), shell=False, stderr=sys.stderr, stdout=sys.stdout)
+    except subprocess.CalledProcessError as ex_:
+        return False
+    return True
+
+video_ext = set(['.mts', '.avi', '.mp4', '.mov', '.ts'])
+audio_ext = set([ '.wav', '.mp3' ])
+img_ext = set(['.jpg', '.png', '.tiff' ])
+
 
 class Time4Files(object):
     """
@@ -53,17 +69,13 @@ class Time4Files(object):
     """
     version__ = "01.02"
 
-    def __init__(self):
+    def __init__(self, recode=None):
         """Set up and parse command line options"""
         usage = "Usage: %prog [options] <source directory>"
 
         self.homedir = os.getcwd()
-
-        self.known_extensions = set([
-                '.mts', '.avi', '.mp4',
-                '.jpg', '.png', '.tiff',
-                '.wav', '.mp3', '.mov', '.ts'
-            ])
+        self.recode = recode
+        self.known_extensions = video_ext | audio_ext | img_ext 
 
         pass    
 
@@ -79,7 +91,8 @@ class Time4Files(object):
         #os.chdir(source_directory)
         for root, _dirnames, filenames in os.walk(source_directory):
             for filename in filenames:
-                if os.path.splitext(filename)[1].lower() in self.known_extensions:
+                name, ext = os.path.splitext(filename)
+                if ext.lower() in self.known_extensions:
                     filepath = os.path.join(root, filename)
                     ctime = os.stat(filepath).st_ctime
                     mtime = os.stat(filepath).st_mtime
@@ -89,17 +102,23 @@ class Time4Files(object):
                         mtime = time.mktime(_dt.timetuple())
                         
                     right_time = min(ctime, mtime )
+                    if self.recode and ext.lower() in video_ext:
+                        ext = '.avi'
+
                     newfilename = os.path.join(self.homedir,
                         time.strftime("%Y-%m-%d-%H-%M-%S-", time.localtime(right_time)) +
-                        filename)
+                        name + ext)
 
                     def _do(target, source):
                         """
                           simple copying
                         """
                         print("start:", source, "->", target)
-                        try:  
-                            shutil.copyfile(source, target)
+                        try:
+                            if self.recode and ext.lower() in video_ext:
+                                recode_video(source, target)
+                            else:        
+                                shutil.copyfile(source, target)
                         except:
                             print("Troubles!!!!!!")
                         print("end:", source, "->", target)
